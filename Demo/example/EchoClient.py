@@ -6,6 +6,7 @@ from twisted.internet.protocol import ClientFactory
 from sys import stdout
 
 class Echo(Protocol):
+    
     def dataReceived(self, data):
         stdout.write(data.decode('utf-8'))
         
@@ -29,6 +30,6 @@ class EchoClientFactory(ClientFactory):
         
         
 
-reactor.connectTCP("localhost", 8007, EchoClientFactory())
+reactor.connectTCP("localhost", 18000, EchoClientFactory())
 reactor.run()
 stdout.write('client done')
