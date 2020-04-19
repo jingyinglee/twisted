@@ -5,14 +5,17 @@ from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 from twisted.internet.protocol import ClientFactory
 from ProtocolUtils import ProtocolUtils
 
+from LogUtils import LogUtils
+
 class BusBase(Protocol):
     def __init__(self,factory):
         self.factory = factory
+        self.log = factory.log
    
     def connectionMade(self):
         s = ProtocolUtils.sign_create(self.factory.request)
         
-        #print('BusBase write', request)
+        self.log.msg('BusBase write', request)
         
         self.transport.write( str(s).encode('utf-8') )
         
@@ -42,6 +45,7 @@ class BusClientFactory(ClientFactory):
     def __init__(self, request):
         self.success = False
         self.request = request
+        self.log = LogUtils(self.__class__, debug=True)
     
     def startedConnecting(self, connector):
         pass
@@ -53,7 +57,7 @@ class BusClientFactory(ClientFactory):
         pass
         
     def clientConnectionFailed(self, connector, reason):
-        #print('client connection failed. Reason:', reason)
+        self.log.err('client connection failed. Reason:', reason)
         self.success = False
         self.reason = reason
         #简单客户端，请求一次就断了

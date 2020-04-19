@@ -3,7 +3,11 @@ from twisted.internet.protocol import Factory
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from twisted.internet import reactor
 
+
 from utils.ProtocolUtils import ProtocolUtils
+from utils.LogUtils import LogUtils
+
+log = LogUtils('proxyservice.log')
 
 class Proxy(Protocol):
 
@@ -22,14 +26,15 @@ class Proxy(Protocol):
         #释放自己注册的协议
         for pro in self.protocols:
             del self.factory.protocols[pro]
-            print('Proxy','connectionLost',pro)
+            log.msg('Proxy','connectionLost',pro)
 
     def dataReceived(self, data):
         s = eval(data.decode('utf-8'))
-        print('Proxy','dataReceived',s)
+        log.msg('Proxy','dataReceived',s)
         if s['protocol'] == 'req_registprotocols':
             #之前没注册过，就可以注册
             if not (set(s['protocols']) & set(self.factory.protocols.keys())):
+                log.msg('Proxy','req_registprotocols', s['protocols'])
                 for pro in s['protocols']:
                     self.factory.protocols[pro] = self
                 #备注当前协议是被注册过的，方便释放时释放
@@ -56,7 +61,7 @@ class Proxy(Protocol):
                 del s['proxy']
                 protocol.transport.write(str(s).encode('utf-8'))
             else:
-                print('miss',s)
+                log.err('miss',s)
         
 class ProxyFactory(Factory):
     def __init__(self):
