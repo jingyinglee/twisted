@@ -2,7 +2,7 @@ from twisted.internet.protocol import Protocol
 from twisted.internet import reactor
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 
-from twisted.internet.protocol import ClientFactory
+from twisted.internet.protocol import ClientFactory,ReconnectingClientFactory
 from ProtocolUtils import ProtocolUtils
 
 class SvrBase(Protocol):
@@ -23,26 +23,32 @@ class SvrBase(Protocol):
         
         s = ProtocolUtils.sign_create(request)
         
-        #print('SvrBase write', request)
+        print('SvrBase connectionMade', s)
         
         self.transport.write( str(s).encode('utf-8') )
         
     def dataReceived(self, data):
-        
         req = eval(data.decode('utf-8'))
+        print('SvrBase dataReceived', req)
+        
         s = req
         if ProtocolUtils.sign_verify(s):
             if s['protocol'] in self.factory.processes:
                 res = self.factory.processes[s['protocol']](s)
                 s = res
-            else:
-                s ={'protocol':'res_error','data':'%s not exist'%s['protocol']}
+                
+                #让代理能确认该回复是谁的消息
+                s['proxy'] = req['proxy']      
+            elif s['protocol'] == 'res_registprotocols':
+                if not s['success']:
+                    print(s)
+                    reactor.stop()
+                else:
+                    return
         else:
             s ={'protocol':'res_error','data':'sign_verify failure'}
-        
-        #让代理能确认该回复是谁的消息
-        s['proxy'] = req['proxy']
-        
+
+        #回复请求
         s = ProtocolUtils.sign_create(s)
         self.transport.write( str(s).encode('utf-8') )
         
@@ -50,7 +56,7 @@ class SvrBase(Protocol):
         pass
         
 
-class SvrClientFactory(ClientFactory):
+class SvrClientFactory(ReconnectingClientFactory):
     def __init__(self):
         self.processes = {}
     
@@ -63,17 +69,19 @@ class SvrClientFactory(ClientFactory):
         return   
     
     def startedConnecting(self, connector):
-        pass
+        #forever retry
+        self.resetDelay()
 
     def buildProtocol(self, addr):
         return SvrBase(self)
 
     def clientConnectionLost(self, connector, reason):
-        pass
+        print(self.__class__,'clientConnectionLost and retry...')
+        self.retry(connector)
         
     def clientConnectionFailed(self, connector, reason):
-        #todo:need to retry
-        print('SvrClientFactory',reason)
+        print(self.__class__,'clientConnectionFailed and retry...')
+        self.retry(connector)
 
 
 
@@ -85,7 +93,7 @@ if __name__ == '__main__':
             SvrClientFactory._add_protocols(self,'req_test',self._request_test)
             
         def _request_test(self,data):
-            return {'protocol':'res_test','data':'ok. got it.'}    
+            return {'protocol':'res_test','data':'ok. got it.'}
     
     def test_server(ip='localhost'):
         reactor.connectTCP(ip, 18000, SvrTest())
@@ -94,3 +102,4 @@ if __name__ == '__main__':
 
     
     test_server()
+    print('SvrBase done')
