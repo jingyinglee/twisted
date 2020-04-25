@@ -20,13 +20,14 @@ def _base_log(name):
     '''
     直接输出打印的
     '''
-    import sys
+    import time
+    
     class base():
         def __init__(self,name):
             self.name = name
             
         def msg(self,value='', sep=' ', end='\n'):
-            print(self.name,end=' ==> ')
+            print(time.strftime("%Y%D%m %H%M%S"),self.name,end=' ==> ')
             print(value,sep,end)
         
         def err(self,value='', sep=' ', end='\n'):

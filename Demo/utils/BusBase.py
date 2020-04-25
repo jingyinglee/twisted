@@ -1,9 +1,9 @@
 from twisted.internet.protocol import Protocol
-from twisted.internet import reactor
+from twisted.internet import reactor, task
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
-
 from twisted.internet.protocol import ClientFactory
-from ProtocolUtils import ProtocolUtils
+
+from ProtocolUtils import ProtocolUtils, HeartBeatSTime
 
 from LogUtils import LogUtils
 
@@ -11,6 +11,9 @@ class BusProtocol(Protocol):
     def __init__(self,factory):
         self.factory = factory
         self.log = factory.log
+        
+        tk = task.LoopingCall(self._heartbeat)
+        tk.start(HeartBeatSTime,now=False)
    
     def connectionMade(self):
         s = ProtocolUtils.sign_create(self.factory.request)
@@ -38,8 +41,15 @@ class BusProtocol(Protocol):
     def connectionLost(self, reason):
         #一般是被dataReceived中的stop已经给关闭了，所以这里判断下。
         if reactor.running:
+            self.factory.reason = reason
             reactor.stop()
         
+    def _heartbeat(self):
+        request = {'protocol':'req_heartbeat','from':str(self.factory.__class__)}
+       
+        s = ProtocolUtils.sign_create(request)
+        #self.log.msg('BusBase _heartbeat', s)
+        self.transport.write( str(s).encode('utf-8') )    
 
 class BusBase(ClientFactory):
     def __init__(self, request):

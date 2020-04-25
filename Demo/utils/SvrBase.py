@@ -1,69 +1,87 @@
+import time
+
 from twisted.internet.protocol import Protocol
-from twisted.internet import reactor
+from twisted.internet import reactor, task
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
 from twisted.internet.protocol import ClientFactory,ReconnectingClientFactory
 from twisted.python import log, logfile
 
-from ProtocolUtils import ProtocolUtils
+from ProtocolUtils import ProtocolUtils, HeartBeatSTime
 
 from LogUtils import LogUtils
+
 
 class SvrProtocol(Protocol):
     def __init__(self,factory):
         self.factory = factory
         self.log = factory.log
         
-    def getClassName(self):
-        cls = self.__class__
-        #<class '__main__.SvrAdb'>
-        name = str(cls)
-        return name[(name.find(".")+1):name.rfind("'")]        
+        tk = task.LoopingCall(self._heartbeat)
+        tk.start(HeartBeatSTime,now=False)
 
     def connectionMade(self):
         #注册协议
-        request = {'protocol':'req_registprotocols','from':str(self.__class__)}
+        request = {'protocol':'req_registprotocols','from':str(self.factory.__class__)}
         request['protocols'] = tuple(self.factory.processes.keys())        
         
-        s = ProtocolUtils.sign_create(request)
-        
-        self.log.msg('SvrBase connectionMade', s)
-        
-        self.transport.write( str(s).encode('utf-8') )
+        self._sendMsg(request)
         
     def dataReceived(self, data):
         req = eval(data.decode('utf-8'))
         self.log.msg('SvrBase dataReceived', req)
         
-        s = req
-        if ProtocolUtils.sign_verify(s):
-            if s['protocol'] in self.factory.processes:
-                res = self.factory.processes[s['protocol']](s)
-                s = res
-                
-                #让代理能确认该回复是谁的消息
-                s['proxy'] = req['proxy']      
-            elif s['protocol'] == 'res_registprotocols':
-                self.log.msg(s)
-                if not s['success']:
-                    reactor.stop()
-                else:
-                    return
-        else:
-            s ={'protocol':'res_error','data':'sign_verify failure'}
-
-        #回复请求
-        s = ProtocolUtils.sign_create(s)
-        self.transport.write( str(s).encode('utf-8') )
+        def _process(data):
+            self,req = data
+            s = req
+            if ProtocolUtils.sign_verify(s):
+                if s['protocol'] in self.factory.processes:
+                    res = self.factory.processes[s['protocol']](s)
+                    s = res
+                    
+                    #让代理能确认该回复是谁的消息
+                    s['proxy'] = req['proxy']      
+                elif s['protocol'] == 'res_registprotocols':
+                    self.log.msg(s)
+                    if not s['success']:
+                        reactor.stop()
+                    else:
+                        return
+            else:
+                s ={'protocol':'res_error','data':'sign_verify failure'}
+    
+            #回复请求
+            self._sendMsg(s)
+        
+        #考虑到服务这边一般是耗时操作，所以这里默认去线程中执行
+        reactor.callInThread(_process,(self,req))
+        
         
     def connectionLost(self, reason):
         pass
         
+    def _heartbeat(self):
+        request = {'protocol':'req_heartbeat','from':str(self.factory.__class__)}
+        self._sendMsg(request)
+           
+    def _sendMsg(self, msg):
+        def __send(data):
+            protocol,msg = data
+            s = ProtocolUtils.sign_create(msg)
+            
+            if s['protocol'] != 'req_heartbeat':
+                protocol.log.msg('SvrBase write', s)
+                
+            protocol.transport.write( str(s).encode('utf-8') )     
+            
+        reactor.callFromThread( __send, (self,msg))
 
 class SvrBase(ReconnectingClientFactory):
     
-    def __init__(self):
+    def __init__(self, poolsize=5):
         self.processes = {}
         self.log = LogUtils(self.__class__)
+        
+        reactor.suggestThreadPoolSize(poolsize)
     
     '''
     子类调用的业务接口:获取注册的协议内容 ('req_redistool',self._func_)
@@ -98,6 +116,7 @@ if __name__ == '__main__':
             SvrBase._add_protocols(self,'req_test',self._request_test)
 
         def _request_test(self,data):
+            time.sleep(4*HeartBeatSTime)
             return {'protocol':'res_test','data':'ok. got it.'}
 
     def test_server(ip='localhost'):

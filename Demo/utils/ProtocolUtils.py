@@ -30,6 +30,10 @@ class ProtocolUtils:
 
         return signbk == sign    
     
+
+#默认60秒一次心跳
+HeartBeatSTime = 60
+
 if __name__ == '__main__':
     protocol = {'protocol':'req_test','data':'123'}
     
