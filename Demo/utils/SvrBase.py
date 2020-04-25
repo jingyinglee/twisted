@@ -8,7 +8,7 @@ from ProtocolUtils import ProtocolUtils
 
 from LogUtils import LogUtils
 
-class SvrBase(Protocol):
+class SvrProtocol(Protocol):
     def __init__(self,factory):
         self.factory = factory
         self.log = factory.log
@@ -59,7 +59,7 @@ class SvrBase(Protocol):
         pass
         
 
-class SvrClientFactory(ReconnectingClientFactory):
+class SvrBase(ReconnectingClientFactory):
     
     def __init__(self):
         self.processes = {}
@@ -78,7 +78,7 @@ class SvrClientFactory(ReconnectingClientFactory):
         self.resetDelay()
 
     def buildProtocol(self, addr):
-        return SvrBase(self)
+        return SvrProtocol(self)
 
     def clientConnectionLost(self, connector, reason):
         self.log.msg(self.__class__,'clientConnectionLost and retry...')
@@ -92,14 +92,14 @@ class SvrClientFactory(ReconnectingClientFactory):
 
 if __name__ == '__main__':
         
-    class SvrTest(SvrClientFactory):
+    class SvrTest(SvrBase):
         def __init__(self):
-            SvrClientFactory.__init__(self)
-            SvrClientFactory._add_protocols(self,'req_test',self._request_test)
-            
+            SvrBase.__init__(self)
+            SvrBase._add_protocols(self,'req_test',self._request_test)
+
         def _request_test(self,data):
             return {'protocol':'res_test','data':'ok. got it.'}
-    
+
     def test_server(ip='localhost'):
         reactor.connectTCP(ip, 18000, SvrTest())
         reactor.run()

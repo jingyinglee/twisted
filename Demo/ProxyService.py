@@ -32,6 +32,17 @@ class Proxy(Protocol):
         s = eval(data.decode('utf-8'))
         log.msg('Proxy','dataReceived',s)
         if s['protocol'] == 'req_registprotocols':
+            self._process_registprotocols(s)     
+        elif s['protocol'].startswith('req_'):
+            self._process_request(s)
+        elif s['protocol'].startswith('res_'):
+            self._process_respone(s)
+                
+    def _process_registprotocols(self,s):
+        '''
+        处理协议的注册
+        '''
+        if s['protocol'] == 'req_registprotocols':
             #之前没注册过，就可以注册
             if not (set(s['protocols']) & set(self.factory.protocols.keys())):
                 log.msg('Proxy','req_registprotocols', s['protocols'])
@@ -43,8 +54,16 @@ class Proxy(Protocol):
             else:
                 s = {'protocol':'res_registprotocols','success':False,'data':'duplication regist %s'%(s['protocols'])}
             s = ProtocolUtils.sign_create(s)
-            self.transport.write(str(s).encode('utf-8'))       
-        elif s['protocol'].startswith('req_'):
+            self.transport.write(str(s).encode('utf-8'))   
+            return True
+        else:
+            return False
+        
+    def _process_request(self,s):
+        '''
+        某客户端有请求消息，这边找到之前有注册过的协议并转发其请求
+        '''
+        if s['protocol'].startswith('req_'):
             if not self.factory.protocols.__contains__(s['protocol']):
                 s = {'protocol':'res_error','data':'process %s is not be regist.'%s['protocol']}
                 s = ProtocolUtils.sign_create(s)
@@ -53,20 +72,34 @@ class Proxy(Protocol):
                 #转发该协议
                 protocol = self.factory.protocols[s['protocol']]
                 s['proxy'] = str(self)#标记是该代理的请求
-                protocol.transport.write(str(s).encode('utf-8'))
-        elif s['protocol'].startswith('res_'):
+                protocol.transport.write(str(s).encode('utf-8'))      
+                
+            return True
+        else:
+            return False
+        
+    def _process_respone(self,s):
+        '''
+        某服务有响应消息回执了，这边找到之前的请求，并回调其具体响应内容
+        '''
+        if s['protocol'].startswith('res_'):
             #收到之前转的协议的回调了
             if 'proxy' in s:
                 protocol = self.factory.proxys[s['proxy']]
                 del s['proxy']
                 protocol.transport.write(str(s).encode('utf-8'))
             else:
-                log.err('miss',s)
+                log.err('miss',s)        
+            return True
+        else:
+            return False
         
 class ProxyFactory(Factory):
     def __init__(self):
         self.numProtocols = 0
+        #各注册协议的具体Protocol实例 {ProtocolName:Protocol}
         self.protocols = {}
+        #记录各连接的实例，方便对请求端响应其回调
         self.proxys = {}
     def buildProtocol(self, addr):
         return Proxy(self)

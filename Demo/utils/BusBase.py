@@ -7,7 +7,7 @@ from ProtocolUtils import ProtocolUtils
 
 from LogUtils import LogUtils
 
-class BusBase(Protocol):
+class BusProtocol(Protocol):
     def __init__(self,factory):
         self.factory = factory
         self.log = factory.log
@@ -41,7 +41,7 @@ class BusBase(Protocol):
             reactor.stop()
         
 
-class BusClientFactory(ClientFactory):
+class BusBase(ClientFactory):
     def __init__(self, request):
         self.success = False
         self.request = request
@@ -51,7 +51,7 @@ class BusClientFactory(ClientFactory):
         pass
 
     def buildProtocol(self, addr):
-        return BusBase(self)
+        return BusProtocol(self)
 
     def clientConnectionLost(self, connector, reason):
         pass
@@ -65,7 +65,7 @@ class BusClientFactory(ClientFactory):
 
 
 def request_callback(request, successCallback, failureCallback=None, ip='localhost'):
-    factory = BusClientFactory(request)
+    factory = BusBase(request)
     reactor.connectTCP(ip, 18000, factory)
     reactor.run()
     #print(reactor.__dict__.keys())
@@ -83,5 +83,7 @@ def request_callback(request, successCallback, failureCallback=None, ip='localho
 if __name__ == '__main__':
     request = {'protocol':'req_test'}
     
-    request_callback(request, successCallback=lambda x:print('success',x), failureCallback=lambda x:print('faulure',x))
+    request_callback(request, 
+                     successCallback=lambda x:print('success',x),
+                     failureCallback=lambda x:print('faulure',x))
     print('BusBase done')
