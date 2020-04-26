@@ -1,4 +1,6 @@
 import time
+from random import randint
+import sys
 
 from twisted.internet.protocol import Protocol
 from twisted.internet import reactor, task
@@ -7,8 +9,8 @@ from twisted.internet.protocol import ClientFactory,ReconnectingClientFactory
 from twisted.python import log, logfile
 
 from ProtocolUtils import ProtocolUtils, HeartBeatSTime
-
 from LogUtils import LogUtils
+
 
 
 class SvrProtocol(Protocol):
@@ -111,18 +113,29 @@ class SvrBase(ReconnectingClientFactory):
 if __name__ == '__main__':
         
     class SvrTest(SvrBase):
-        def __init__(self):
+        def __init__(self, index):
             SvrBase.__init__(self)
-            SvrBase._add_protocols(self,'req_test',self._request_test)
+            self.index = index
+            SvrBase._add_protocols(self,'req_test%d'%self.index,self._request_test)
 
         def _request_test(self,data):
-            time.sleep(4*HeartBeatSTime)
-            return {'protocol':'res_test','data':'ok. got it.'}
+            recvTime = time.time()
+            time.sleep(randint(1,4)*HeartBeatSTime)
+            return {'protocol':'res_test%d'%self.index,'data':'ok. %d got it. '%recvTime}
 
-    def test_server(ip='localhost'):
-        reactor.connectTCP(ip, 18000, SvrTest())
+    def test_server(index,ip='localhost'):
+        reactor.connectTCP(ip, 18000, SvrTest(index))
         reactor.run()
 
+    def test_mul():
+        #压测时HeartBeatSTime可修改为1秒
+        #bat测试： for /l %I in (0,1,50) do (start python SvrBase.py %I )
+        print(sys.argv)
+        test_server(index=int(sys.argv[1]))
     
-    test_server()
+    def test():
+        test_server(index=0)
+        
+    test()
+    #test_mul()
     print('SvrBase done')

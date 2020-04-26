@@ -1,2 +1,4 @@
 *.pyc
 output
+/Demo/utils/*.spec
+/Demo/utils/拖曳打包.bat

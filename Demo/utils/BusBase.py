@@ -1,3 +1,5 @@
+import sys
+
 from twisted.internet.protocol import Protocol
 from twisted.internet import reactor, task
 from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
@@ -91,9 +93,18 @@ def request_callback(request, successCallback, failureCallback=None, ip='localho
     
 
 if __name__ == '__main__':
-    request = {'protocol':'req_test'}
     
-    request_callback(request, 
-                     successCallback=lambda x:print('success',x),
-                     failureCallback=lambda x:print('faulure',x))
+    def test_mul():
+        #压测时HeartBeatSTime可修改为1秒
+        #bat测试：for /l %J in (0,1,5) do ( for /l %I in (0,1,50) do (start python BusBase.py %I ) )
+        print(sys.argv)    
+        request = {'protocol':'req_test%s'%sys.argv[1]}
+    
+    def test():
+        request = {'protocol':'req_test0'}
+        request_callback(request, 
+                         successCallback=lambda x:print('success',x),
+                         failureCallback=lambda x:print('faulure',x))
+    test()
+    #test_mul()
     print('BusBase done')

@@ -27,20 +27,27 @@ class Proxy(Protocol):
         self.factory.numProtocols = self.factory.numProtocols - 1
         #释放自己的信息
         del self.factory.proxys[str(self)]
+        del self.factory.heartbeats[str(self)]
         #释放自己注册的协议（服务端）
         for pro in self.protocols:
             del self.factory.svrProtocols[pro]
             log.msg('Proxy','connectionLost svr',pro)
             
             #todo 如果服务端关闭了，那么其对应的请求端也应该要关闭它
-            for protocol in self.factory.busProtocols[pro]:
-                log.msg('Proxy','connectionLost bus',protocol)
-                protocol.transport.abortConnection()
+            if pro in self.factory.busProtocols:
+                for protocol in self.factory.busProtocols[pro]:
+                    log.msg('Proxy','connectionLost bus',protocol)
+                    protocol.transport.abortConnection()
+                del self.factory.busProtocols[pro]
         
         #释放自己请求的协议（客户端）
         for pro,protocols in self.factory.busProtocols.items():
             if self in self.factory.busProtocols[pro]:
                 self.factory.busProtocols[pro].remove(self)
+                
+        #如果是服务端的退出，则打印下当前代理的整体情况
+        if self.protocols:
+            self.factory.logProtocolsDetails()
         
 
     def dataReceived(self, data):
@@ -86,15 +93,15 @@ class Proxy(Protocol):
         某客户端有请求消息，这边找到之前有注册过的协议并转发其请求
         '''
         if s['protocol'].startswith('req_'):
-            if not self.factory.busProtocols.__contains__(s['protocol']):
-                self.factory.busProtocols[s['protocol']] = set()
-            self.factory.busProtocols[s['protocol']].add(self)
-            
             if not self.factory.svrProtocols.__contains__(s['protocol']):
                 s = {'protocol':'res_error','data':'process %s is not be regist.'%s['protocol']}
                 s = ProtocolUtils.sign_create(s)
                 self.transport.write(str(s).encode('utf-8'))                 
             else:
+                if not self.factory.busProtocols.__contains__(s['protocol']):
+                    self.factory.busProtocols[s['protocol']] = set()
+                self.factory.busProtocols[s['protocol']].add(self)
+                                
                 #转发该协议
                 protocol = self.factory.svrProtocols[s['protocol']]
                 s['proxy'] = str(self)#标记是该代理的请求
@@ -148,15 +155,23 @@ class ProxyFactory(Factory):
                     log.msg('%s heartbeat lost'%flag)
                     protocol.transport.abortConnection()
 
+    def logProtocolsDetails(self):
+        log.msg('numProtocols:%d'%self.numProtocols,
+                'svrProtocols:%d'%len(self.svrProtocols), 
+                'busProtocols:%d'%len(self.busProtocols), 
+                'proxys:%d'%len(self.proxys), 
+                'heartbeats:%d'%len(self.heartbeats))
 
-# 8007 is the port you want to run under. Choose something >1024
-endpoint = TCP4ServerEndpoint(reactor, 18000)
-
-factory = ProxyFactory()
-
-tk = task.LoopingCall(factory.checkHeartbeat)
-tk.start(HeartBeatSTime,now=False)
-
-endpoint.listen(factory)
-reactor.run()        
-stdout.write('proxy service done')
+def main():
+    endpoint = TCP4ServerEndpoint(reactor, 18000)
+    
+    factory = ProxyFactory()
+    
+    tk = task.LoopingCall(factory.checkHeartbeat)
+    tk.start(HeartBeatSTime,now=False)
+    
+    endpoint.listen(factory)
+    reactor.run()        
+    stdout.write('proxy service done')
+    
+main()
